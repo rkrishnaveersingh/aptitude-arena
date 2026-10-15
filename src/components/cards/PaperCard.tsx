@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, Play, Bookmark, Clock, HelpCircle, Eye } from 'lucide-react';
+import { FileText, Download, Play, Bookmark, Clock, HelpCircle, Eye, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Paper } from '../../types';
 import { useApp } from '../../context/AppContext';
 
@@ -17,6 +17,9 @@ export const PaperCard: React.FC<PaperCardProps> = ({
   const { downloadPaper, isBookmarked, toggleBookmark } = useApp();
   const bookmarked = isBookmarked('paper', paper.id);
 
+  const hasWorkingPdf = Boolean(paper.pdfUrl || (paper.filePath && paper.downloadAvailable));
+  const expectedPath = paper.filePath || `${paper.examName.replace(/\s+/g, '-')}/${paper.year}/${paper.title.replace(/\s+/g, '-')}.pdf`;
+
   const formatFileSize = (bytes: number) => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
@@ -27,7 +30,11 @@ export const PaperCard: React.FC<PaperCardProps> = ({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+              hasWorkingPdf 
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400' 
+                : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+            }`}>
               <FileText className="w-5 h-5" />
             </div>
             <div>
@@ -57,11 +64,25 @@ export const PaperCard: React.FC<PaperCardProps> = ({
           </button>
         </div>
 
-        {/* Subject & Difficulty */}
-        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 mb-4">
-          <span className="font-medium text-slate-900 dark:text-white">{paper.subjectName}</span>
-          <span className="text-slate-400">·</span>
-          <span className="capitalize text-slate-500">{paper.difficulty} difficulty</span>
+        {/* Subject, Difficulty & PDF Status Badge */}
+        <div className="flex items-center justify-between text-xs mb-4">
+          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <span className="font-medium text-slate-900 dark:text-white">{paper.subjectName}</span>
+            <span className="text-slate-400">·</span>
+            <span className="capitalize text-slate-500">{paper.difficulty}</span>
+          </div>
+
+          {hasWorkingPdf ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>PDF Ready</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60" title={`Pending upload: ${expectedPath}`}>
+              <AlertTriangle className="w-3 h-3" />
+              <span>PDF In Queue</span>
+            </span>
+          )}
         </div>
 
         {/* Paper Meta Details */}
@@ -88,7 +109,7 @@ export const PaperCard: React.FC<PaperCardProps> = ({
 
         {/* Download metadata */}
         <div className="text-[11px] text-slate-400 mb-4 flex items-center justify-between">
-          <span>{formatFileSize(paper.fileSizeBytes)} · PDF Format</span>
+          <span>{formatFileSize(paper.fileSizeBytes)} · {hasWorkingPdf ? 'Verified PDF Document' : 'Interactive Format'}</span>
           <span className="tabular-nums">{paper.downloadCount.toLocaleString()} downloads</span>
         </div>
       </div>
@@ -114,8 +135,12 @@ export const PaperCard: React.FC<PaperCardProps> = ({
 
         <button
           onClick={() => downloadPaper(paper)}
-          className="p-2 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          title="Download Paper"
+          className={`p-2 rounded-lg border transition-colors ${
+            hasWorkingPdf 
+              ? 'text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100/60'
+              : 'text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20 hover:bg-amber-100/40'
+          }`}
+          title={hasWorkingPdf ? 'Download verified official examination PDF' : `PDF pending upload at ${expectedPath}`}
         >
           <Download className="w-3.5 h-3.5" />
         </button>

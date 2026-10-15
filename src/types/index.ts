@@ -1,11 +1,26 @@
 export type ExamCategory = 
   | 'Engineering' 
-  | 'Civil Services' 
-  | 'Staff Selection' 
-  | 'Undergraduate Science' 
-  | 'Banking & Finance' 
-  | 'Medical' 
-  | 'Law & Management';
+  | 'Government Exams'
+  | 'State Civil Services'
+  | 'Engineering Entrance'
+  | 'Commerce & Finance'
+  | 'Medical Entrance'
+  | 'General Aptitude'
+  | 'Civil Services'
+  | 'Banking & Finance'
+  | 'Staff Selection'
+  | 'Undergraduate Science'
+  | 'Medical'
+  | 'Other'
+  | string;
+
+export interface AuthSession {
+  role: 'student' | 'admin';
+  userId: string;
+  email: string;
+  name: string;
+  token?: string;
+}
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'mixed';
 

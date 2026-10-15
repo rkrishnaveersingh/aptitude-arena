@@ -9,7 +9,7 @@ interface LeaderboardPageProps {
 }
 
 export const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ onNavigate }) => {
-  const { exams } = useApp();
+  const { exams, user } = useApp();
   const [timeframe, setTimeframe] = useState<'global' | 'weekly' | 'monthly'>('global');
   const [selectedExam, setSelectedExam] = useState<string>('all');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -178,7 +178,7 @@ export const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ onNavigate }) 
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
               {entries.map(entry => {
-                const isUser = entry.userName.includes('(You)');
+                const isUser = user && (entry.userId === user.id || entry.userName.toLowerCase() === user.name.toLowerCase());
                 return (
                   <tr
                     key={entry.userId}
@@ -194,13 +194,13 @@ export const LeaderboardPage: React.FC<LeaderboardPageProps> = ({ onNavigate }) 
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2.5">
                         <img
-                          src={entry.avatarUrl}
+                          src={isUser ? user.avatarUrl : entry.avatarUrl}
                           alt={entry.userName}
                           className="w-7 h-7 rounded-full object-cover shrink-0"
                         />
                         <div className="truncate max-w-xs">
                           <span className="text-slate-900 dark:text-white block font-medium truncate">
-                            {entry.userName}
+                            {isUser ? `${user.name} (You)` : entry.userName}
                           </span>
                           {entry.badge && (
                             <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-normal">

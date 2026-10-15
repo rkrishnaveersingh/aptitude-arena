@@ -19,24 +19,51 @@ const getEnvVar = (key: string): string => {
   return '';
 };
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || 'https://iwcbhuombytkckowabig.supabase.co';
+export const DEFAULT_SUPABASE_URL = 'https://mhcavtjovnyzqpbaykwu.supabase.co';
+export const DEFAULT_PAPERS_BUCKET = "PYQS PAPER'S";
+
+export const getSupabaseUrl = (): string => {
+  return getEnvVar('VITE_SUPABASE_URL') || DEFAULT_SUPABASE_URL;
+};
+
+const supabaseUrl = getSupabaseUrl();
 const supabaseKey = 
   getEnvVar('VITE_SUPABASE_PUBLISHABLE_KEY') || 
   getEnvVar('VITE_SUPABASE_ANON_KEY') || 
   '';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
+export const isSupabaseConfigured = Boolean(supabaseKey);
 
-// Fallback dummy key to prevent top-level import crashes if environment variables are evaluated asynchronously
-const effectiveKey = supabaseKey || 'sb_publishable_placeholder';
+/**
+ * Constructs direct public Supabase Storage URL for a paper PDF.
+ * Uses the official bucket "PYQS PAPER'S" and Supabase getPublicUrl SDK.
+ */
+export const getPublicStoragePdfUrl = (filePath: string, bucketName: string = DEFAULT_PAPERS_BUCKET): string => {
+  if (!filePath) return '';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
+  const cleanPath = filePath.replace(/^\/+/, '');
+  try {
+    const { data } = supabase.storage.from(bucketName).getPublicUrl(cleanPath);
+    if (data?.publicUrl) return data.publicUrl;
+  } catch {
+    // fallback below
+  }
+  const baseUrl = getSupabaseUrl().replace(/\/+$/, '');
+  const encodedPath = cleanPath.split('/').map(seg => encodeURIComponent(seg)).join('/');
+  return `${baseUrl}/storage/v1/object/public/${encodeURIComponent(bucketName)}/${encodedPath}`;
+};
 
-// Initialize Supabase Client
-export const supabase = createClient(supabaseUrl, effectiveKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+// Safe client initialized for Supabase interactions
+export const supabase = createClient(
+  supabaseUrl, 
+  supabaseKey || 'anon-public-key', 
+  {
+    auth: {
+      persistSession: Boolean(supabaseKey),
+      autoRefreshToken: Boolean(supabaseKey),
+    },
+  }
+);
 
 export interface EdgeFunctionDownloadResponse {
   success: boolean;
@@ -48,7 +75,7 @@ export interface EdgeFunctionDownloadResponse {
 
 /**
  * Downloads a paper PDF using the Supabase Edge Function:
- * GET https://iwcbhuombytkckowabig.supabase.co/functions/v1/download-paper?paper_id=<paper.id>
+ * GET https://mhcavtjovnyzqpbaykwu.supabase.co/functions/v1/download-paper?paper_id=<paper.id>
  */
 export async function downloadPaperViaEdgeFunction(paperId: string): Promise<EdgeFunctionDownloadResponse> {
   if (!supabaseUrl || !supabaseKey) {

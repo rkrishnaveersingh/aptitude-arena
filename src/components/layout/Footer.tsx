@@ -6,6 +6,16 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const [showCreatedBy, setShowCreatedBy] = React.useState(false);
+
+  const teamMembers = [
+    'KRISHNA VEER SINGH',
+    'MUDIT SHARMA',
+    'KUSHAGRA GARG',
+    'KARTIK',
+    'PIYUSH',
+  ];
+
   return (
     <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
@@ -179,8 +189,56 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <div>
             © {new Date().getFullYear()} Aptitude Arena. Built for competitive exam excellence.
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <span>Clean Examination Architecture</span>
+            <span>·</span>
+            {/* Created By Blue Text Link */}
+            <div className="relative inline-block">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowCreatedBy(prev => !prev)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowCreatedBy(prev => !prev);
+                  }
+                }}
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold cursor-pointer underline underline-offset-2 transition-colors select-none"
+              >
+                Created By
+              </span>
+
+              {showCreatedBy && (
+                <div className="absolute bottom-full right-0 mb-3 w-64 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="font-bold text-slate-900 dark:text-white text-xs tracking-wide">
+                      Development Team
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setShowCreatedBy(false)}
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium"
+                    >
+                      Close
+                    </span>
+                  </div>
+                  <ol className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+                    {teamMembers.map((member, idx) => (
+                      <li key={member} className="flex items-center gap-2">
+                        <span className="w-4 h-4 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white tracking-tight">
+                          {member}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
             <span>·</span>
             <span>Zero Slop Interface</span>
           </div>

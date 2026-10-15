@@ -24,7 +24,7 @@ interface ExamDetailPageProps {
 }
 
 export const ExamDetailPage: React.FC<ExamDetailPageProps> = ({ slug, onNavigate }) => {
-  const { exams, papers, setActiveQuizConfig, isBookmarked, toggleBookmark, showToast } = useApp();
+  const { exams, papers, setActiveQuizConfig, isBookmarked, toggleBookmark, showToast, requireAuth } = useApp();
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
   const [previewPaper, setPreviewPaper] = useState<Paper | null>(null);
@@ -56,27 +56,37 @@ export const ExamDetailPage: React.FC<ExamDetailPageProps> = ({ slug, onNavigate
   });
 
   const handleStartFullPractice = () => {
-    setActiveQuizConfig({
-      examId: exam.id,
-      examName: exam.name,
-      questionCount: 15,
-      difficulty: 'mixed',
-      timeLimitMinutes: 20,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: exam.id,
+        examName: exam.name,
+        questionCount: 15,
+        difficulty: 'mixed',
+        timeLimitMinutes: 20,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to launch ${exam.name} comprehensive practice.`);
   };
 
   const handleStartPaperPractice = (paper: Paper) => {
-    setActiveQuizConfig({
-      examId: paper.examId,
-      examName: paper.examName,
-      subjectName: paper.subjectName,
-      paperId: paper.id,
-      questionCount: Math.min(20, paper.totalQuestions),
-      difficulty: paper.difficulty,
-      timeLimitMinutes: paper.durationMinutes,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: paper.examId,
+        examName: paper.examName,
+        subjectName: paper.subjectName,
+        paperId: paper.id,
+        questionCount: Math.min(20, paper.totalQuestions),
+        difficulty: paper.difficulty,
+        timeLimitMinutes: paper.durationMinutes,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to practice this official paper.`);
+  };
+
+  const handlePreviewPaper = (paper: Paper) => {
+    requireAuth(() => {
+      setPreviewPaper(paper);
+    }, 'Please sign in or register to preview official question papers.');
   };
 
   return (
@@ -240,7 +250,7 @@ export const ExamDetailPage: React.FC<ExamDetailPageProps> = ({ slug, onNavigate
                 <PaperCard
                   key={paper.id}
                   paper={paper}
-                  onPreview={p => setPreviewPaper(p)}
+                  onPreview={handlePreviewPaper}
                   onStartPractice={handleStartPaperPractice}
                 />
               ))}

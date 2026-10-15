@@ -94,11 +94,23 @@ export const ExamCard: React.FC<ExamCardProps> = ({
 
         {/* Exam Metrics Row: Unboxed text with typographic separators */}
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{exam.paperCount}</span>
-          <span>Papers</span>
+          {exam.paperCount > 0 ? (
+            <>
+              <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{exam.paperCount}</span>
+              <span>{exam.paperCount === 1 ? 'Paper' : 'Papers'}</span>
+            </>
+          ) : (
+            <span>Practice Module</span>
+          )}
           <span aria-hidden="true">·</span>
-          <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{exam.questionCount}+</span>
-          <span>Questions</span>
+          {exam.questionCount > 0 ? (
+            <>
+              <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{exam.questionCount}</span>
+              <span>Questions</span>
+            </>
+          ) : (
+            <span>Question Bank</span>
+          )}
           <span aria-hidden="true">·</span>
           <span className="capitalize">{exam.difficulty}</span>
         </div>
@@ -126,7 +138,9 @@ export const ExamCard: React.FC<ExamCardProps> = ({
         <div className="text-xs text-slate-500 dark:text-slate-400 mb-5">
           <span>Available Years: </span>
           <span className="font-medium text-slate-800 dark:text-slate-200 tabular-nums">
-            {exam.availableYears.join(', ')}
+            {exam.availableYears && exam.availableYears.length > 0
+              ? exam.availableYears.join(', ')
+              : 'Current Syllabus Edition'}
           </span>
         </div>
       </div>

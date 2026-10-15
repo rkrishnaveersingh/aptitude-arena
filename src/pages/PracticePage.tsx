@@ -40,6 +40,7 @@ export const PracticePage: React.FC<PracticePageProps> = ({
     setActiveQuizConfig, 
     setLastQuizResult, 
     user,
+    requireAuth,
     showToast 
   } = useApp();
 
@@ -76,11 +77,19 @@ export const PracticePage: React.FC<PracticePageProps> = ({
   // If activeQuizConfig was passed from another page (like clicking "Start Timed Practice" on a paper), auto-launch
   useEffect(() => {
     if (activeQuizConfig && quizMode === 'setup') {
-      launchQuizFromConfig(activeQuizConfig);
+      if (!user) {
+        requireAuth(() => launchQuizFromConfig(activeQuizConfig), 'Please sign in or register to take this exam simulation.');
+      } else {
+        launchQuizFromConfig(activeQuizConfig);
+      }
     }
-  }, [activeQuizConfig]);
+  }, [activeQuizConfig, user]);
 
   const launchQuizFromConfig = async (config: QuizConfig) => {
+    if (!user) {
+      requireAuth(() => launchQuizFromConfig(config), 'Please sign in or register to take this exam simulation.');
+      return;
+    }
     // Fetch matching questions
     const matching = await examService.getQuestions({
       examId: config.examId,
@@ -117,20 +126,22 @@ export const PracticePage: React.FC<PracticePageProps> = ({
   };
 
   const handleStartSetupQuiz = () => {
-    const finalCount = questionCountType === '10' ? 10 : questionCountType === '20' ? 20 : customQuestionCount;
-    const timeLimit = Math.max(5, Math.round(finalCount * 1.5));
+    requireAuth(() => {
+      const finalCount = questionCountType === '10' ? 10 : questionCountType === '20' ? 20 : customQuestionCount;
+      const timeLimit = Math.max(5, Math.round(finalCount * 1.5));
 
-    const config: QuizConfig = {
-      examId: selectedExamId,
-      examName: selectedExam?.name || 'GATE',
-      subjectName: selectedSubject,
-      difficulty,
-      questionCount: finalCount,
-      timeLimitMinutes: timeLimit,
-    };
+      const config: QuizConfig = {
+        examId: selectedExamId,
+        examName: selectedExam?.name || 'GATE',
+        subjectName: selectedSubject,
+        difficulty,
+        questionCount: finalCount,
+        timeLimitMinutes: timeLimit,
+      };
 
-    setActiveQuizConfig(config);
-    launchQuizFromConfig(config);
+      setActiveQuizConfig(config);
+      launchQuizFromConfig(config);
+    }, 'Please sign in or register to launch your practice session.');
   };
 
   const handleSelectOption = (optionId: 'A' | 'B' | 'C' | 'D') => {

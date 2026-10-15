@@ -10,7 +10,7 @@ interface ExamsPageProps {
 }
 
 export const ExamsPage: React.FC<ExamsPageProps> = ({ onNavigate }) => {
-  const { exams, setActiveQuizConfig } = useApp();
+  const { exams, isBackendConnecting, setActiveQuizConfig, requireAuth } = useApp();
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -18,24 +18,33 @@ export const ExamsPage: React.FC<ExamsPageProps> = ({ onNavigate }) => {
   const [sortBy, setSortBy] = useState<'popular' | 'questions' | 'name'>('popular');
   const [visibleCount, setVisibleCount] = useState(6);
 
-  // Extract unique categories
+  // Extract distinct categories dynamically from the active exam data
   const categories = useMemo(() => {
     const set = new Set<string>();
-    exams.forEach(e => set.add(e.category));
-    return ['all', ...Array.from(set)];
+    exams.forEach(e => {
+      if (e.active && e.category) {
+        set.add(e.category);
+      }
+    });
+    return ['all', ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [exams]);
 
   const filteredExams = useMemo(() => {
     return exams.filter(e => {
       if (!e.active) return false;
-      if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;
-      if (selectedDifficulty !== 'all' && e.difficulty.toLowerCase() !== selectedDifficulty.toLowerCase()) return false;
+      if (selectedCategory !== 'all' && e.category.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return false;
+      }
+      if (selectedDifficulty !== 'all' && e.difficulty.toLowerCase() !== selectedDifficulty.toLowerCase()) {
+        return false;
+      }
       if (search.trim()) {
         const q = search.toLowerCase();
         const matchesName = e.name.toLowerCase().includes(q);
         const matchesFull = e.fullName.toLowerCase().includes(q);
         const matchesSubject = e.subjects.some(s => s.toLowerCase().includes(q));
-        if (!matchesName && !matchesFull && !matchesSubject) return false;
+        const matchesCategory = e.category.toLowerCase().includes(q);
+        if (!matchesName && !matchesFull && !matchesSubject && !matchesCategory) return false;
       }
       return true;
     }).sort((a, b) => {
@@ -49,14 +58,16 @@ export const ExamsPage: React.FC<ExamsPageProps> = ({ onNavigate }) => {
   const hasMore = visibleCount < filteredExams.length;
 
   const handleStartPractice = (exam: Exam) => {
-    setActiveQuizConfig({
-      examId: exam.id,
-      examName: exam.name,
-      questionCount: 10,
-      difficulty: 'mixed',
-      timeLimitMinutes: 15,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: exam.id,
+        examName: exam.name,
+        questionCount: 10,
+        difficulty: 'mixed',
+        timeLimitMinutes: 15,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to practice ${exam.name}.`);
   };
 
   return (
@@ -90,7 +101,10 @@ export const ExamsPage: React.FC<ExamsPageProps> = ({ onNavigate }) => {
           <div className="md:col-span-3">
             <select
               value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
+              onChange={e => {
+                setSelectedCategory(e.target.value);
+                setVisibleCount(6);
+              }}
               className="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-indigo-500"
             >
               <option value="all">All Categories</option>
@@ -149,8 +163,18 @@ export const ExamsPage: React.FC<ExamsPageProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* Grid or Empty State */}
-      {filteredExams.length === 0 ? (
+      {/* Grid, Loading, or Empty State */}
+      {isBackendConnecting && exams.length === 0 ? (
+        <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+          <div className="w-8 h-8 mx-auto border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+            Connecting to production backend...
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Loading verified examination modules and syllabus domains from Render.
+          </p>
+        </div>
+      ) : filteredExams.length === 0 ? (
         <EmptyState
           title="No examinations match your filter"
           description="Try relaxing your search terms or selecting a different category to see available examination papers."

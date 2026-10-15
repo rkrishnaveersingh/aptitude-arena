@@ -1,13 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Exam, Paper, Question, UserProfile, NotificationItem, QuizConfig, QuizAttempt } from '../types';
 import { examService } from '../services/examService';
-import { supabase, isSupabaseConfigured, downloadPaperViaEdgeFunction } from '../services/supabase';
+import { supabase, isSupabaseConfigured, downloadPaperViaEdgeFunction, getPublicStoragePdfUrl } from '../services/supabase';
+import { authService } from '../services/authService';
 
 interface AppContextType {
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   user: UserProfile | null;
   loginAs: (role: 'student' | 'admin') => void;
+  loginStudent: (email: string, pass: string) => { success: boolean; error?: string };
+  registerStudent: (params: { name: string; email: string; password: string; confirmPassword?: string; targetExam?: string }) => { success: boolean; error?: string };
+  loginAdmin: (email: string, pass: string) => { success: boolean; error?: string };
   logout: () => void;
   updateUserProfile: (profile: Partial<UserProfile>) => Promise<void>;
   
@@ -34,7 +38,10 @@ interface AppContextType {
   isBookmarked: (type: 'exam' | 'paper' | 'question', id: string) => boolean;
   
   downloadPaper: (paper: Paper) => void;
+  viewPaperPdf: (paper: Paper) => void;
   downloadedPaperIds: string[];
+  isBackendConnecting: boolean;
+  backendError: string | null;
   
   activeQuizConfig: QuizConfig | null;
   setActiveQuizConfig: (cfg: QuizConfig | null) => void;
@@ -46,8 +53,10 @@ interface AppContextType {
   
   isAuthOpen: boolean;
   setIsAuthOpen: (open: boolean) => void;
-  authInitialTab: 'login' | 'register';
-  openAuthModal: (tab?: 'login' | 'register') => void;
+  authInitialTab: 'student' | 'admin' | 'register';
+  openAuthModal: (tab?: 'student' | 'admin' | 'register' | 'login', onAuthenticated?: () => void) => void;
+  requireAuth: (action: () => void, promptMessage?: string) => boolean;
+  executePendingAction: () => void;
   
   toastMessage: string | null;
   showToast: (msg: string) => void;
@@ -56,119 +65,96 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Theme state
+  // Theme state: robust centralized theme
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('aptitude_arena_theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    try {
+      const saved = localStorage.getItem('aptitude_arena_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
   });
 
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
+      root.style.colorScheme = 'dark';
     } else {
       root.classList.remove('dark');
+      root.style.colorScheme = 'light';
     }
-    localStorage.setItem('aptitude_arena_theme', theme);
+    try {
+      localStorage.setItem('aptitude_arena_theme', theme);
+    } catch {
+      // ignore
+    }
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  // User state
-  const [user, setUser] = useState<UserProfile | null>(null);
+  // User state: initialized strictly from active session
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    return authService.getCurrentUser();
+  });
 
   useEffect(() => {
-    // Load profile and blend with database achievements
-    examService.getUserProfile().then(async profile => {
-      const achievements = await examService.getAchievements();
-      setUser({ ...profile, achievements });
-    });
-
-    // Check Supabase session if active
-    if (isSupabaseConfigured) {
-      const loadUserSupabaseData = async (userId: string, baseProfile: UserProfile) => {
-        const updatedProfile = { ...baseProfile };
-        try {
-          const [bookmarksRes, downloadsRes] = await Promise.all([
-            supabase.from('bookmarks').select('*').eq('user_id', userId),
-            supabase.from('downloads').select('*').eq('user_id', userId)
-          ]);
-
-          if (bookmarksRes.data && bookmarksRes.data.length > 0) {
-            const paperIds = bookmarksRes.data.filter(b => b.paper_id).map(b => b.paper_id);
-            const questionIds = bookmarksRes.data.filter(b => b.question_id).map(b => b.question_id);
-            updatedProfile.bookmarks = {
-              ...updatedProfile.bookmarks,
-              paperIds: Array.from(new Set([...updatedProfile.bookmarks.paperIds, ...paperIds])),
-              questionIds: Array.from(new Set([...updatedProfile.bookmarks.questionIds, ...questionIds]))
-            };
-          }
-
-          if (downloadsRes.data && downloadsRes.data.length > 0) {
-            const items = downloadsRes.data.map(d => ({
-              paperId: d.paper_id,
-              downloadedAt: d.downloaded_at || new Date().toISOString()
-            }));
-            const map = new Map<string, { paperId: string; downloadedAt: string }>();
-            [...updatedProfile.downloadedPapers, ...items].forEach(i => map.set(i.paperId, i));
-            updatedProfile.downloadedPapers = Array.from(map.values());
-          }
-        } catch (err) {
-          console.warn('Could not fetch user bookmarks/downloads from Supabase:', err);
-        }
-        return updatedProfile;
-      };
-
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
-        if (session?.user) {
-          const base = await examService.getUserProfile();
-          const merged = await loadUserSupabaseData(session.user.id, {
-            ...base,
-            id: session.user.id,
-            email: session.user.email || base.email,
-            name: session.user.user_metadata?.full_name || base.name,
-          });
-          setUser(merged);
-        }
+    const active = authService.getCurrentUser();
+    if (active) {
+      examService.getAchievements().then(achievements => {
+        setUser(prev => prev ? { ...prev, achievements } : active);
       });
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          const base = await examService.getUserProfile();
-          const merged = await loadUserSupabaseData(session.user.id, {
-            ...base,
-            id: session.user.id,
-            email: session.user.email || base.email,
-            name: session.user.user_metadata?.full_name || base.name,
-          });
-          setUser(merged);
-        }
-      });
-
-      return () => subscription.unsubscribe();
+    } else {
+      setUser(null);
     }
   }, []);
 
-  const loginAs = async (role: 'student' | 'admin') => {
-    const base = await examService.getUserProfile();
-    const updatedUser: UserProfile = {
-      ...base,
-      role,
-      name: role === 'admin' ? 'Devansh Verma (Administrator)' : 'Aryan Sharma',
-      email: role === 'admin' ? 'admin@aptitudearena.internal' : 'aryan.sharma@prep.arena'
-    };
-    await examService.saveUserProfile(updatedUser);
-    setUser(updatedUser);
-    showToast(`Logged in as ${role === 'admin' ? 'Admin' : 'Student'}`);
+  const loginStudent = (email: string, pass: string) => {
+    const res = authService.loginStudent(email, pass);
+    if (res.success && res.user) {
+      setUser(res.user);
+      showToast(`Welcome back, ${res.user.name.split(' ')[0]}!`);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Invalid email or password.' };
   };
 
-  const logout = async () => {
+  const registerStudent = (params: { name: string; email: string; password: string; confirmPassword?: string; targetExam?: string }) => {
+    const res = authService.registerStudent(params);
+    if (res.success && res.user) {
+      setUser(res.user);
+      showToast(`Welcome, ${res.user.name.split(' ')[0]}! Account created successfully.`);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Registration failed.' };
+  };
+
+  const loginAdmin = (email: string, pass: string) => {
+    const res = authService.loginAdmin(email, pass);
+    if (res.success && res.user) {
+      setUser(res.user);
+      showToast('Logged in as Administrator');
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Invalid administrator credentials.' };
+  };
+
+  const loginAs = (role: 'student' | 'admin') => {
+    if (role === 'admin') {
+      loginAdmin('admin@aptitudearena.internal', 'krishna@123');
+    } else {
+      loginStudent('aryan.sharma@prep.arena', 'student@123');
+    }
+  };
+
+  const logout = () => {
+    authService.logout();
     if (isSupabaseConfigured) {
       try {
-        await supabase.auth.signOut();
+        supabase.auth.signOut().catch(() => {});
       } catch {
         // ignore
       }
@@ -180,7 +166,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateUserProfile = async (partial: Partial<UserProfile>) => {
     if (!user) return;
     const updated = { ...user, ...partial };
-    await examService.saveUserProfile(updated);
+    authService.saveUserProfile(updated);
     setUser(updated);
     showToast('Profile updated');
   };
@@ -189,20 +175,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [exams, setExams] = useState<Exam[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [isBackendConnecting, setIsBackendConnecting] = useState<boolean>(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   const refreshExams = async () => {
-    const data = await examService.getExams();
-    setExams(data);
+    try {
+      setIsBackendConnecting(true);
+      const data = await examService.getExams();
+      setExams(data);
+      setBackendError(null);
+    } catch (err: any) {
+      console.warn('Backend exams fetch notice:', err);
+      setBackendError(err?.message || 'Connecting to backend...');
+    } finally {
+      setIsBackendConnecting(false);
+    }
   };
 
   const refreshPapers = async () => {
-    const data = await examService.getPapers();
-    setPapers(data);
+    try {
+      const data = await examService.getPapers();
+      setPapers(data);
+    } catch (err) {
+      console.warn('Backend papers fetch notice:', err);
+    }
   };
 
   const refreshQuestions = async () => {
-    const data = await examService.getQuestions();
-    setQuestions(data);
+    try {
+      const data = await examService.getQuestions();
+      setQuestions(data);
+    } catch (err) {
+      console.warn('Backend questions fetch notice:', err);
+    }
   };
 
   useEffect(() => {
@@ -283,94 +288,147 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const downloadedPaperIds = user?.downloadedPapers.map(d => d.paperId) || [];
 
   /**
-   * Downloads a paper using the Supabase Edge Function:
-   * GET https://iwcbhuombytkckowabig.supabase.co/functions/v1/download-paper?paper_id=<paper.id>
-   * Sends the actual database paper.id
+   * Opens the official paper PDF in a new browser tab via direct Supabase Public Storage URL.
+   * Does NOT route large PDF files through Spring Boot or create empty documents.
+   */
+  const viewPaperPdf = (paper: Paper) => {
+    let targetUrl = paper.pdfUrl;
+    if (!targetUrl && paper.filePath && paper.downloadAvailable) {
+      targetUrl = getPublicStoragePdfUrl(paper.filePath);
+    }
+
+    if (targetUrl) {
+      try {
+        if (typeof window !== 'undefined' && window.open) {
+          window.open(targetUrl, '_blank', 'noopener,noreferrer');
+        } else if (typeof document !== 'undefined') {
+          const a = document.createElement('a');
+          a.href = targetUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+        showToast(`Opening official PDF for ${paper.title}`);
+        return;
+      } catch (err) {
+        console.warn('Could not open PDF viewer window:', err);
+      }
+    }
+
+    const targetPath = paper.filePath || `${paper.examName.replace(/\s+/g, '-')}/${paper.year}/${paper.title.replace(/\s+/g, '-')}.pdf`;
+    showToast(`PDF storage asset for "${paper.title}" is pending upload in Supabase Storage "PYQS PAPER'S" bucket at path: ${targetPath}`);
+  };
+
+  /**
+   * Downloads official examination paper using public Supabase Storage CDN or Edge Function.
+   * If a required file is missing from Supabase Storage, explains the exact status instead of generating fake files.
    */
   const downloadPaper = async (paper: Paper) => {
-    showToast(`Downloading ${paper.title}...`);
+    if (!user) {
+      requireAuth(() => downloadPaper(paper), 'Please sign in or register to download official examination papers.');
+      return;
+    }
 
-    let downloadedViaEdge = false;
+    let targetUrl = paper.pdfUrl;
+    if (!targetUrl && paper.filePath && paper.downloadAvailable) {
+      targetUrl = getPublicStoragePdfUrl(paper.filePath);
+    }
 
-    // Use Edge Function for download
+    const recordDownload = async () => {
+      if (user) {
+        const already = user.downloadedPapers.find(d => d.paperId === paper.id);
+        if (!already) {
+          const updatedDownloads = [
+            { paperId: paper.id, downloadedAt: new Date().toISOString() },
+            ...user.downloadedPapers
+          ];
+          await updateUserProfile({ downloadedPapers: updatedDownloads });
+
+          if (isSupabaseConfigured && user.id.includes('-') && user.id.length > 20 && paper.id.includes('-') && paper.id.length > 20) {
+            try {
+              await supabase.from('downloads').insert({
+                user_id: user.id,
+                paper_id: paper.id,
+              });
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+
+      if (isSupabaseConfigured && paper.id.includes('-') && paper.id.length > 20) {
+        try {
+          await supabase.from('papers').update({ download_count: (paper.downloadCount || 0) + 1 }).eq('id', paper.id);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    if (targetUrl) {
+      showToast(`Initiating download for ${paper.title}...`);
+      const safeFilename = `${paper.examName.replace(/\s+/g, '_')}_${paper.year}_${paper.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+
+      try {
+        const response = await fetch(targetUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = safeFilename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+          showToast(`Downloaded official PDF: ${safeFilename}`);
+          await recordDownload();
+          return;
+        }
+      } catch (blobErr) {
+        console.warn('Direct blob fetch failed, falling back to download anchor:', blobErr);
+      }
+
+      try {
+        const a = document.createElement('a');
+        a.href = targetUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.download = safeFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast(`Downloaded official PDF: ${safeFilename}`);
+        await recordDownload();
+        return;
+      } catch (err) {
+        console.warn('Direct public storage download failed:', err);
+      }
+    }
+
+    // Try Supabase edge function if configured
     if (isSupabaseConfigured) {
       try {
         const edgeRes = await downloadPaperViaEdgeFunction(paper.id);
         if (edgeRes.success && edgeRes.download_url) {
-          downloadedViaEdge = true;
           showToast(`Downloaded official PDF for ${paper.title}`);
+          await recordDownload();
+          return;
+        } else if (edgeRes.error) {
+          showToast(`Download notice: ${edgeRes.error}`);
+          return;
         }
       } catch (err) {
         console.warn('Edge function download invocation failed:', err);
       }
     }
 
-    // Fallback if edge function or storage object was not present (e.g. for synthetic mock cards)
-    if (!downloadedViaEdge) {
-      const content = `=====================================================
-APTITUDE ARENA - OFFICIAL PREVIOUS YEAR EXAMINATION PAPER
-=====================================================
-EXAM: ${paper.examName} (${paper.year})
-TITLE: ${paper.title}
-SUBJECT: ${paper.subjectName}
-DURATION: ${paper.durationMinutes} Minutes
-TOTAL QUESTIONS: ${paper.totalQuestions}
-TOTAL MARKS: ${paper.totalMarks}
-DIFFICULTY: ${paper.difficulty.toUpperCase()}
-
-INSTRUCTIONS:
-${paper.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
-
-=====================================================
-PRACTICE VERIFICATION HASH: AA-${paper.id.toUpperCase()}-${paper.year}
-=====================================================
-Verified by Aptitude Arena Exam Research Committee.
-Practice more questions at https://aptitudearena.internal
-`;
-
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${paper.examName}_${paper.year}_${paper.subjectName.replace(/\s+/g, '_')}_Paper.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-
-    // Save download in profile
-    if (user) {
-      const already = user.downloadedPapers.find(d => d.paperId === paper.id);
-      if (!already) {
-        const updatedDownloads = [
-          { paperId: paper.id, downloadedAt: new Date().toISOString() },
-          ...user.downloadedPapers
-        ];
-        await updateUserProfile({ downloadedPapers: updatedDownloads });
-
-        // Record in Supabase downloads table if user has database UUID
-        if (isSupabaseConfigured && user.id.includes('-') && user.id.length > 20 && paper.id.includes('-') && paper.id.length > 20) {
-          try {
-            await supabase.from('downloads').insert({
-              user_id: user.id,
-              paper_id: paper.id,
-            });
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
-
-    // Increment download count in Supabase
-    if (isSupabaseConfigured && paper.id.includes('-') && paper.id.length > 20) {
-      try {
-        await supabase.from('papers').update({ download_count: (paper.downloadCount || 0) + 1 }).eq('id', paper.id);
-      } catch {
-        // ignore
-      }
-    }
+    // Inform user of missing storage asset with exact storage bucket path required
+    const targetPath = paper.filePath || `${paper.examName.replace(/\s+/g, '-')}/${paper.year}/${paper.title.replace(/\s+/g, '-')}.pdf`;
+    showToast(`PDF document is not yet uploaded to Supabase Storage "PYQS PAPER'S" bucket at path: ${targetPath}`);
   };
 
   // Quiz state
@@ -380,11 +438,44 @@ Practice more questions at https://aptitudearena.internal
   // Search & Auth Modals
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authInitialTab, setAuthInitialTab] = useState<'login' | 'register'>('login');
+  const [authInitialTab, setAuthInitialTab] = useState<'student' | 'admin' | 'register'>('student');
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-  const openAuthModal = (tab: 'login' | 'register' = 'login') => {
-    setAuthInitialTab(tab);
+  const openAuthModal = (
+    tab: 'student' | 'admin' | 'register' | 'login' = 'student',
+    onAuthenticated?: () => void
+  ) => {
+    setAuthInitialTab(tab === 'login' ? 'student' : tab);
+    if (onAuthenticated) {
+      setPendingAction(() => onAuthenticated);
+    }
     setIsAuthOpen(true);
+  };
+
+  const requireAuth = (action: () => void, promptMessage?: string): boolean => {
+    if (user) {
+      action();
+      return true;
+    }
+    if (promptMessage) {
+      showToast(promptMessage);
+    } else {
+      showToast('Please sign in or create an account to continue.');
+    }
+    openAuthModal('student', action);
+    return false;
+  };
+
+  const executePendingAction = () => {
+    if (pendingAction) {
+      const act = pendingAction;
+      setPendingAction(null);
+      try {
+        act();
+      } catch (e) {
+        console.warn('Failed to execute pending action:', e);
+      }
+    }
   };
 
   // Toast
@@ -410,6 +501,9 @@ Practice more questions at https://aptitudearena.internal
         toggleTheme,
         user,
         loginAs,
+        loginStudent,
+        registerStudent,
+        loginAdmin,
         logout,
         updateUserProfile,
         exams,
@@ -426,7 +520,10 @@ Practice more questions at https://aptitudearena.internal
         toggleBookmark,
         isBookmarked,
         downloadPaper,
+        viewPaperPdf,
         downloadedPaperIds,
+        isBackendConnecting,
+        backendError,
         activeQuizConfig,
         setActiveQuizConfig,
         lastQuizResult,
@@ -437,6 +534,8 @@ Practice more questions at https://aptitudearena.internal
         setIsAuthOpen,
         authInitialTab,
         openAuthModal,
+        requireAuth,
+        executePendingAction,
         toastMessage,
         showToast
       }}

@@ -24,38 +24,57 @@ interface HomePageProps {
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
-  const { exams, papers, setActiveQuizConfig, showToast } = useApp();
+  const { exams, papers, setActiveQuizConfig, showToast, requireAuth } = useApp();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [previewPaper, setPreviewPaper] = useState<Paper | null>(null);
 
-  const categories = ['All', 'Engineering', 'Civil Services', 'Staff Selection', 'Undergraduate Science'];
+  // Dynamically extract distinct categories from exams
+  const categories = React.useMemo(() => {
+    const set = new Set<string>();
+    exams.forEach(e => {
+      if (e.active && e.category) {
+        set.add(e.category);
+      }
+    });
+    return ['All', ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [exams]);
 
   const filteredExams = selectedCategory === 'All'
     ? exams.filter(e => e.active)
-    : exams.filter(e => e.active && e.category === selectedCategory);
+    : exams.filter(e => e.active && e.category.toLowerCase() === selectedCategory.toLowerCase());
 
   const handleStartPractice = (exam: Exam) => {
-    setActiveQuizConfig({
-      examId: exam.id,
-      examName: exam.name,
-      questionCount: 10,
-      difficulty: 'mixed',
-      timeLimitMinutes: 15,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: exam.id,
+        examName: exam.name,
+        questionCount: 10,
+        difficulty: 'mixed',
+        timeLimitMinutes: 15,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to start practicing ${exam.name}.`);
   };
 
   const handleStartPaperPractice = (paper: Paper) => {
-    setActiveQuizConfig({
-      examId: paper.examId,
-      examName: paper.examName,
-      subjectName: paper.subjectName,
-      paperId: paper.id,
-      questionCount: Math.min(20, paper.totalQuestions),
-      difficulty: paper.difficulty,
-      timeLimitMinutes: paper.durationMinutes,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: paper.examId,
+        examName: paper.examName,
+        subjectName: paper.subjectName,
+        paperId: paper.id,
+        questionCount: Math.min(20, paper.totalQuestions),
+        difficulty: paper.difficulty,
+        timeLimitMinutes: paper.durationMinutes,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to practice this official paper.`);
+  };
+
+  const handlePreviewPaper = (paper: Paper) => {
+    requireAuth(() => {
+      setPreviewPaper(paper);
+    }, 'Please sign in or register to preview official question papers.');
   };
 
   return (
@@ -84,7 +103,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               {/* CTAs */}
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
-                  onClick={() => onNavigate('/practice')}
+                  onClick={() => {
+                    requireAuth(() => onNavigate('/practice'), 'Please sign in or register to start practicing.');
+                  }}
                   className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
                 >
                   <Play className="w-4 h-4 fill-current" />
@@ -291,7 +312,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             <PaperCard
               key={paper.id}
               paper={paper}
-              onPreview={p => setPreviewPaper(p)}
+              onPreview={handlePreviewPaper}
               onStartPractice={handleStartPaperPractice}
             />
           ))}
@@ -310,7 +331,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             </p>
           </div>
           <button
-            onClick={() => onNavigate('/practice')}
+            onClick={() => {
+              requireAuth(() => onNavigate('/practice'), 'Please sign in or register to launch the practice arena.');
+            }}
             className="px-6 py-3 bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-xs sm:text-sm rounded-lg transition-colors whitespace-nowrap shadow-sm"
           >
             Launch Practice Arena

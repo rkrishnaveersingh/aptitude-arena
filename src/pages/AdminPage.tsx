@@ -22,6 +22,7 @@ import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { Exam, Paper, Question, AdminAnalytics } from '../types';
 import { examService } from '../services/examService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { authService, ADMIN_CREDENTIALS } from '../services/authService';
 
 interface AdminPageProps {
   onNavigate: (path: string) => void;
@@ -362,16 +363,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate }) => {
     setDeleteTarget(null);
   };
 
-  // User list for admin
-  const mockUsersList = [
-    { id: 'u1', name: 'Aryan Sharma', email: 'aryan.sharma@prep.arena', role: 'student', testsTaken: 26, status: 'Active', joined: 'Aug 2026' },
-    { id: 'u2', name: 'Kavita Singhal', email: 'kavita.singhal@prep.arena', role: 'student', testsTaken: 44, status: 'Active', joined: 'Jul 2026' },
-    { id: 'u3', name: 'Rohan Deshmukh', email: 'rohan.d@gateprep.io', role: 'student', testsTaken: 38, status: 'Active', joined: 'Aug 2026' },
-    { id: 'u4', name: 'Priya Meena', email: 'priya.ras@rpsc.gov.in', role: 'student', testsTaken: 31, status: 'Active', joined: 'Jun 2026' },
-    { id: 'u5', name: 'Devansh Verma', email: 'admin@aptitudearena.internal', role: 'admin', testsTaken: 12, status: 'Active', joined: 'May 2026' },
-  ];
+  // User list for admin: load real registered students + authorized administrator
+  const getInitialUsersList = () => {
+    const regStudents = authService.getRegisteredStudents();
+    const studentRows = regStudents.map(s => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      role: 'student',
+      testsTaken: 0,
+      status: 'Active',
+      joined: new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    }));
 
-  const [usersList, setUsersList] = useState(mockUsersList);
+    const adminRow = {
+      id: 'usr-admin-master',
+      name: 'Krishna Veer Singh',
+      email: ADMIN_CREDENTIALS.email,
+      role: 'admin',
+      testsTaken: 12,
+      status: 'Active',
+      joined: 'May 2026'
+    };
+
+    return [adminRow, ...studentRows];
+  };
+
+  const [usersList, setUsersList] = useState(getInitialUsersList);
 
   useEffect(() => {
     if (isSupabaseConfigured) {
@@ -386,7 +404,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate }) => {
             status: 'Active',
             joined: new Date(p.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
           }));
-          setUsersList([...mapped, ...mockUsersList]);
+          setUsersList(prev => [...mapped, ...prev]);
         }
       });
     }
@@ -928,11 +946,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onNavigate }) => {
                     className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                   >
                     <option value="Engineering">Engineering</option>
+                    <option value="Government Exams">Government Exams</option>
+                    <option value="State Civil Services">State Civil Services</option>
+                    <option value="Engineering Entrance">Engineering Entrance</option>
+                    <option value="Commerce & Finance">Commerce & Finance</option>
+                    <option value="Medical Entrance">Medical Entrance</option>
+                    <option value="General Aptitude">General Aptitude</option>
                     <option value="Civil Services">Civil Services</option>
-                    <option value="Staff Selection">Staff Selection</option>
-                    <option value="Undergraduate Science">Undergraduate Science</option>
                     <option value="Banking & Finance">Banking & Finance</option>
-                    <option value="Medical">Medical</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
               </div>

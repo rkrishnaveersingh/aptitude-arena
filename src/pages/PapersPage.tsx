@@ -17,12 +17,13 @@ export const PapersPage: React.FC<PapersPageProps> = ({
   initialExamId, 
   initialYear 
 }) => {
-  const { papers, exams, setActiveQuizConfig } = useApp();
+  const { papers, exams, isBackendConnecting, setActiveQuizConfig, requireAuth } = useApp();
 
   const [search, setSearch] = useState('');
   const [selectedExamId, setSelectedExamId] = useState<string>(initialExamId || 'all');
   const [selectedYear, setSelectedYear] = useState<string>(initialYear ? String(initialYear) : 'all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
+  const [selectedPaperType, setSelectedPaperType] = useState<string>('all');
   const [previewPaper, setPreviewPaper] = useState<Paper | null>(null);
 
   // Available unique years
@@ -33,15 +34,26 @@ export const PapersPage: React.FC<PapersPageProps> = ({
   }, [papers]);
 
   const filteredPapers = useMemo(() => {
-    const selectedExamObj = exams.find(e => e.id === selectedExamId);
     return papers.filter(p => {
       if (selectedExamId !== 'all') {
+        const selectedExamObj = exams.find(e => e.id === selectedExamId || e.slug === selectedExamId);
+        const targetSlug = selectedExamObj?.slug || selectedExamId.toLowerCase();
+        const targetName = selectedExamObj?.name?.toLowerCase() || '';
+
         const matchesExam = p.examId === selectedExamId || 
-                            (selectedExamObj && p.examName.toLowerCase() === selectedExamObj.name.toLowerCase());
+                            p.examName.toLowerCase() === selectedExamId.toLowerCase() ||
+                            (targetName && (
+                              p.examName.toLowerCase().includes(targetName) || 
+                              targetName.includes(p.examName.toLowerCase()) ||
+                              p.examName.toLowerCase().replace(/\s+/g, '-').includes(targetSlug) ||
+                              targetSlug.includes(p.examName.toLowerCase().replace(/\s+/g, '-'))
+                            )) ||
+                            (selectedExamId.startsWith('exam-') && p.examName.toLowerCase().includes(selectedExamId.replace('exam-', '').toLowerCase()));
         if (!matchesExam) return false;
       }
       if (selectedYear !== 'all' && p.year !== Number(selectedYear)) return false;
       if (selectedDifficulty !== 'all' && p.difficulty !== selectedDifficulty) return false;
+      if (selectedPaperType !== 'all' && p.paperType !== selectedPaperType) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         const matchesTitle = p.title.toLowerCase().includes(q);
@@ -51,19 +63,25 @@ export const PapersPage: React.FC<PapersPageProps> = ({
       }
       return true;
     });
-  }, [papers, exams, selectedExamId, selectedYear, selectedDifficulty, search]);
+  }, [papers, exams, selectedExamId, selectedYear, selectedDifficulty, selectedPaperType, search]);
 
   const handleStartPractice = (paper: Paper) => {
-    setActiveQuizConfig({
-      examId: paper.examId,
-      examName: paper.examName,
-      subjectName: paper.subjectName,
-      paperId: paper.id,
-      questionCount: Math.min(20, paper.totalQuestions),
-      difficulty: paper.difficulty,
-      timeLimitMinutes: paper.durationMinutes,
-    });
-    onNavigate('/practice');
+    requireAuth(() => {
+      setActiveQuizConfig({
+        examId: paper.examId,
+        examName: paper.examName,
+        subjectName: paper.subjectName,
+        paperId: paper.id,
+        questionCount: Math.min(20, paper.totalQuestions),
+        difficulty: paper.difficulty,
+        timeLimitMinutes: paper.durationMinutes,
+      });
+      onNavigate('/practice');
+    }, `Please sign in or register to practice ${paper.title}.`);
+  };
+
+  const handlePreviewPaper = (paper: Paper) => {
+    setPreviewPaper(paper);
   };
 
   return (
@@ -82,7 +100,7 @@ export const PapersPage: React.FC<PapersPageProps> = ({
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
           {/* Search */}
-          <div className="lg:col-span-4 relative">
+          <div className="lg:col-span-3 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
@@ -110,7 +128,7 @@ export const PapersPage: React.FC<PapersPageProps> = ({
           </div>
 
           {/* Select Year */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <select
               value={selectedYear}
               onChange={e => setSelectedYear(e.target.value)}
@@ -122,6 +140,20 @@ export const PapersPage: React.FC<PapersPageProps> = ({
                   Year {yr}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Select Paper Type */}
+          <div className="lg:col-span-2">
+            <select
+              value={selectedPaperType}
+              onChange={e => setSelectedPaperType(e.target.value)}
+              className="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-indigo-500"
+            >
+              <option value="all">All Types</option>
+              <option value="Full Length">Full Length</option>
+              <option value="Subject Wise">Subject Wise</option>
+              <option value="Sectional">Sectional</option>
             </select>
           </div>
 
@@ -143,13 +175,14 @@ export const PapersPage: React.FC<PapersPageProps> = ({
         {/* Status Bar */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
           <span>Found {filteredPapers.length} previous-year paper booklets</span>
-          {(search || selectedExamId !== 'all' || selectedYear !== 'all' || selectedDifficulty !== 'all') && (
+          {(search || selectedExamId !== 'all' || selectedYear !== 'all' || selectedDifficulty !== 'all' || selectedPaperType !== 'all') && (
             <button
               onClick={() => {
                 setSearch('');
                 setSelectedExamId('all');
                 setSelectedYear('all');
                 setSelectedDifficulty('all');
+                setSelectedPaperType('all');
               }}
               className="text-indigo-600 dark:text-indigo-400 hover:underline"
             >
@@ -159,8 +192,18 @@ export const PapersPage: React.FC<PapersPageProps> = ({
         </div>
       </div>
 
-      {/* Papers Grid or Empty State */}
-      {filteredPapers.length === 0 ? (
+      {/* Papers Grid, Loading, or Empty State */}
+      {isBackendConnecting && papers.length === 0 ? (
+        <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+          <div className="w-8 h-8 mx-auto border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+            Loading previous-year question papers...
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Retrieving official question booklets and answer keys from backend.
+          </p>
+        </div>
+      ) : filteredPapers.length === 0 ? (
         <EmptyState
           title="No papers found matching your criteria"
           description="Try broadening your exam or year selection to view other official previous-year papers."
@@ -178,7 +221,7 @@ export const PapersPage: React.FC<PapersPageProps> = ({
             <PaperCard
               key={paper.id}
               paper={paper}
-              onPreview={p => setPreviewPaper(p)}
+              onPreview={handlePreviewPaper}
               onStartPractice={handleStartPractice}
             />
           ))}

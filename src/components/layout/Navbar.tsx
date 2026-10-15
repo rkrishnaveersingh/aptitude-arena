@@ -187,16 +187,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate }) => {
                   </div>
 
                   <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
-                    {/* Role toggle demo shortcut */}
-                    <button
-                      onClick={() => {
-                        loginAs(user.role === 'admin' ? 'student' : 'admin');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-1.5 text-left text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 text-[11px]"
-                    >
-                      Switch to {user.role === 'admin' ? 'Student' : 'Admin'} View
-                    </button>
                     <button
                       onClick={() => {
                         logout();

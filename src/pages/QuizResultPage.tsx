@@ -18,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { QuestionCard } from '../components/cards/QuestionCard';
 import { EmptyState } from '../components/common/EmptyState';
 import { QuizAttempt } from '../types';
+import { examService } from '../services/examService';
 
 interface QuizResultPageProps {
   onNavigate: (path: string) => void;
@@ -26,8 +27,18 @@ interface QuizResultPageProps {
 
 export const QuizResultPage: React.FC<QuizResultPageProps> = ({ onNavigate, attemptId }) => {
   const { lastQuizResult, setActiveQuizConfig, showToast } = useApp();
+  const [attempt, setAttempt] = React.useState<QuizAttempt | null>(lastQuizResult);
 
-  const attempt: QuizAttempt | null = lastQuizResult;
+  useEffect(() => {
+    if (lastQuizResult) {
+      setAttempt(lastQuizResult);
+    } else if (attemptId) {
+      examService.getQuizHistory().then(history => {
+        const found = history.find(a => a.id === attemptId);
+        if (found) setAttempt(found);
+      });
+    }
+  }, [lastQuizResult, attemptId]);
 
   useEffect(() => {
     if (attempt && attempt.accuracy >= 70) {

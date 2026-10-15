@@ -19,10 +19,12 @@ import { DownloadsPage } from './pages/DownloadsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { AboutPage } from './pages/AboutPage';
+import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { ShieldAlert } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { toastMessage } = useApp();
+  const { toastMessage, user } = useApp();
 
   // Route state initialized from window location or default '/'
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -79,7 +81,37 @@ const AppContent: React.FC = () => {
         const subject = searchParams.get('subject') || undefined;
         return <PracticePage onNavigate={navigate} initialExamId={examId} initialSubject={subject} />;
       }
+      case '/login': {
+        const tabParam = searchParams.get('tab') === 'admin' ? 'admin' : 'student';
+        return <LoginPage onNavigate={navigate} initialTab={tabParam} />;
+      }
       case '/dashboard':
+        if (!user) {
+          return <LoginPage onNavigate={navigate} initialTab="student" />;
+        }
+        if (user.role === 'admin') {
+          return (
+            <div className="max-w-2xl mx-auto py-16 px-4 text-center">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 space-y-4 shadow-sm">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Administrator Session Active</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                  You are currently logged in with coordinator privileges. The student dashboard is reserved for student aspirant accounts.
+                </p>
+                <div className="flex justify-center gap-3 pt-2">
+                  <button onClick={() => navigate('/admin')} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors">
+                    Go to Admin Dashboard
+                  </button>
+                  <button onClick={() => navigate('/login?tab=student')} className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Switch to Student Account
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
         return <DashboardPage onNavigate={navigate} />;
       case '/leaderboard':
         return <LeaderboardPage onNavigate={navigate} />;
@@ -88,8 +120,34 @@ const AppContent: React.FC = () => {
       case '/downloads':
         return <DownloadsPage onNavigate={navigate} />;
       case '/profile':
+        if (!user) {
+          return <LoginPage onNavigate={navigate} initialTab="student" />;
+        }
         return <ProfilePage onNavigate={navigate} />;
       case '/admin':
+        if (!user || user.role !== 'admin') {
+          return (
+            <div className="max-w-2xl mx-auto py-16 px-4 text-center">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 space-y-4 shadow-sm">
+                <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Admin Privileges Required</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                  Access to the master management console requires active administrator authentication. Regular students cannot access the admin area.
+                </p>
+                <div className="flex justify-center gap-3 pt-2">
+                  <button onClick={() => navigate('/login?tab=admin')} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors">
+                    Sign In as Administrator
+                  </button>
+                  <button onClick={() => navigate('/')} className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Return to Home
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
         return <AdminPage onNavigate={navigate} />;
       case '/about':
         return <AboutPage onNavigate={navigate} />;
